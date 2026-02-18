@@ -25,7 +25,7 @@ export function AlexRenderer({ result }: { result: AlexResult }) {
 
       <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4" >{title ?? "ALEX Guidance"}</h2>
 
-      {summary && <p className="alex-summary">{summary}</p>}
+      {summary && <p className="text-slate-700 text-sm leading-relaxed mt-2">{summary}</p>}
 
       {status === "needs_clarification" && clarifying_question && (
         <div className="alex-section">
