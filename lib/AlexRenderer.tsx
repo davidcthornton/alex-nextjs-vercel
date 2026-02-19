@@ -1,6 +1,5 @@
 type AlexResult = {
-  status: "ok" | "needs_clarification" | "not_in_kb" | "unclear_in_kb";
-  clarifying_question: string | null;
+  status: "ok" | "not_in_kb" | "unclear_in_kb";
   title: string | null;
   summary: string | null;
   steps: { step_number: number; instruction: string; notes: string | null }[];
@@ -9,36 +8,20 @@ type AlexResult = {
 };
 
 export function AlexRenderer({ result }: { result: AlexResult }) {
-  const {
-    status,
-    title,
-    summary,
-    steps,
-    clarifying_question,
-    relevant_excerpts,
-    kb_limitations,
-  } = result;
+  const { status, title, summary, steps, relevant_excerpts, kb_limitations } = result;
 
   return (
     <div className="alex-card">
-      {/*<div className="alex-status">Status: {status}</div>*/}
-
-      <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4" >{title ?? "ALEX Guidance"}</h2>
+      <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-4">
+        {title ?? "ALEX Guidance"}
+      </h2>
 
       {summary && <p className="text-slate-700 text-sm leading-relaxed mt-2">{summary}</p>}
 
-      {status === "needs_clarification" && clarifying_question && (
-        <div className="alex-section">
-          <h3>Clarifying Question</h3>
-          <p>{clarifying_question}</p>
-        </div>
-      )}
-
-      {status === "ok" && steps?.length > 0 && (
+      {/* Show procedure steps whenever they exist (not only when status === "ok") */}
+      {steps?.length > 0 && (
         <div className="alex-section space-y-3">
-          <h3 className="text-base font-semibold text-slate-900">
-            Procedure
-          </h3>
+          <h3 className="text-base font-semibold text-slate-900">Procedure</h3>
 
           <ol className="list-decimal pl-6 space-y-3">
             {steps.map((s) => (
@@ -56,22 +39,14 @@ export function AlexRenderer({ result }: { result: AlexResult }) {
         </div>
       )}
 
-
-      {/*{relevant_excerpts?.length > 0 && (
-        <div className="alex-section">
-          <h3 className="text-med sm:text-xl font-semibold text-slate-900">Relevant Excerpts</h3>
-          {relevant_excerpts.map((ex, i) => (
-            <blockquote key={i}>
-              {ex.location_hint && (
-                <div className="alex-location">
-                  Location: {ex.location_hint}
-                </div>
-              )}
-              {ex.excerpt}
-            </blockquote>
-          ))}
+      {/* Optional: show a friendly message for not_in_kb / unclear_in_kb when there are no steps */}
+      {status !== "ok" && (!steps || steps.length === 0) && (
+        <div className="alex-section text-sm text-slate-700">
+          {status === "not_in_kb"
+            ? "This question isn’t explicitly covered in the provided knowledge base."
+            : "The knowledge base is unclear or incomplete for this question."}
         </div>
-      )}*/}
+      )}
 
       {kb_limitations && (
         <div className="alex-section alex-warning text-slate-900">

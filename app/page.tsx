@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react"; 
 import { buildSpeakableScript } from "@/lib/speechScript";
 import { AlexRenderer } from "@/lib/AlexRenderer";
+
 
 type AlexResult = any; // for MVP; you can strongly type this later
 type ChatMsg = { role: "user" | "assistant"; content: string };
@@ -11,6 +12,10 @@ type ChatMsg = { role: "user" | "assistant"; content: string };
 export default function Page() {
 
   const [messages, setMessages] = useState<ChatMsg[]>([]);
+  const [ttsMode, setTtsMode] = useState<"device" | "openai">("device");
+  const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const [deviceVoices, setDeviceVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [deviceVoiceURI, setDeviceVoiceURI] = useState<string>(""); // store voice.voiceURI
 
   const audioCtxRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -31,6 +36,42 @@ export default function Page() {
   const chunksRef = useRef<BlobPart[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
+
+
+
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+
+    const synth = window.speechSynthesis;
+
+    const load = () => {
+      const voices = synth.getVoices() || [];
+      setDeviceVoices(voices);
+
+      // pick a sensible default once (if none chosen yet)
+      if (!deviceVoiceURI && voices.length) {
+        // prefer an English voice if possible; otherwise first voice
+        const preferred =
+          voices.find(v => v.lang?.toLowerCase().startsWith("en")) ?? voices[0];
+        setDeviceVoiceURI(preferred.voiceURI);
+      }
+    };
+
+    load();
+    synth.onvoiceschanged = load;
+
+    return () => {
+      synth.onvoiceschanged = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function getSelectedDeviceVoice() {
+    if (!deviceVoices.length) return null;
+    return deviceVoices.find(v => v.voiceURI === deviceVoiceURI) ?? null;
+  }
+
 
   async function startRecording() {
     setStatus("requesting_mic");
@@ -149,6 +190,33 @@ export default function Page() {
     const script = buildSpeakableScript(r);
     setStatus("tts");
 
+    // ---- DEVICE TTS PATH ----
+    if (ttsMode === "device") {
+      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
+        // fallback to OpenAI if device TTS not available
+      } else {
+        const utter = new SpeechSynthesisUtterance(script);
+        utterRef.current = utter;
+
+        const selected = getSelectedDeviceVoice();
+        if (selected) utter.voice = selected;
+
+        utter.onstart = () => setStatus("playing");
+        utter.onend = () => {
+          utterRef.current = null;
+          setStatus("answered");
+        };
+        utter.onerror = () => {
+          utterRef.current = null;
+          setStatus("answered");
+        };
+
+        window.speechSynthesis.speak(utter);
+        return;
+      }
+    }
+
+    // ---- OPENAI TTS PATH ----
     const ac = new AbortController();
     ttsAbortRef.current = ac;
 
@@ -164,25 +232,40 @@ export default function Page() {
 
     const audio = audioRef.current!;
     audio.src = url;
-    await audio.play();
 
-    setStatus("playing");
+    // update status based on actual playback
+    audio.onplaying = () => setStatus("playing");
     audio.onended = () => setStatus("answered");
+    audio.onpause = () => {
+      // if user paused/stopped manually, don't claim we're "playing"
+      if (status === "playing") setStatus("answered");
+    };
+
+    await audio.play();
   }
 
+
   function bargeIn() {
-    // stop audio
+    // stop device TTS
+    if (typeof window !== "undefined" && "speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
+      utterRef.current = null;
+    }
+
+    // stop <audio> playback
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
       audioRef.current.src = "";
     }
+
     // abort fetch
     if (ttsAbortRef.current) {
       ttsAbortRef.current.abort();
       ttsAbortRef.current = null;
     }
   }
+
 
   function stopSilenceMonitor() {
     if (rafRef.current) cancelAnimationFrame(rafRef.current);
@@ -304,6 +387,36 @@ export default function Page() {
 
         <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-3">
 
+          <div className="flex flex-wrap items-center gap-2 mb-2">
+            <span className="text-sm text-slate-600">TTS:</span>
+
+            <button
+              type="button"
+              onClick={() => setTtsMode("device")}
+              className={`alex-btn w-full sm:w-auto ${ttsMode === "device" ? "alex-btn-primary" : "alex-btn-secondary"}`}
+            >
+              Device
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTtsMode("openai")}
+              className={`alex-btn w-full sm:w-auto ${ttsMode === "openai" ? "alex-btn-primary" : "alex-btn-secondary"}`}
+            >
+              OpenAI
+            </button>
+
+            <button
+              type="button"
+              onClick={bargeIn}
+              className="alex-btn alex-btn-secondary w-full sm:w-auto"
+              disabled={status !== "playing" && status !== "tts"}
+            >
+              🛑 Stop Audio
+            </button>
+          </div>
+
+
           <button
             className="alex-btn alex-btn-primary w-full sm:w-auto"
             onClick={() => {
@@ -314,6 +427,39 @@ export default function Page() {
             🔊 Read Response Aloud
           </button>
           <audio ref={audioRef} controls className="w-full" />
+
+
+          {ttsMode === "device" && (
+            <div className="space-y-1">
+              <label className="text-sm text-slate-600">Device voice</label>
+              <select
+                className="w-full rounded-xl border border-slate-300 bg-white p-2 text-sm"
+                value={deviceVoiceURI}
+                onChange={(e) => setDeviceVoiceURI(e.target.value)}
+                disabled={!deviceVoices.length}
+              >
+                {!deviceVoices.length ? (
+                  <option value="">Loading voices…</option>
+                ) : (
+                  deviceVoices
+                    // Optional: put English first
+                    .slice()
+                    .sort((a, b) => {
+                      const aEn = a.lang?.toLowerCase().startsWith("en") ? 0 : 1;
+                      const bEn = b.lang?.toLowerCase().startsWith("en") ? 0 : 1;
+                      if (aEn !== bEn) return aEn - bEn;
+                      return (a.name || "").localeCompare(b.name || "");
+                    })
+                    .map((v) => (
+                      <option key={v.voiceURI} value={v.voiceURI}>
+                        {v.name} — {v.lang}{v.default ? " (default)" : ""}
+                      </option>
+                    ))
+                )}
+              </select>
+            </div>
+          )}
+
         </section>
 
         {/* Response */}
