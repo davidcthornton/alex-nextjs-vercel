@@ -27,6 +27,14 @@ export default function Page() {
   ] as const;
 
 
+  const [sttMode, setSttMode] = useState<"device" | "cloud">("cloud");
+  const speechRecRef = useRef<any>(null);
+  const finalTranscriptRef = useRef<string>("");
+  const [deviceSupported, setDeviceSupported] = useState(false);
+  const [hasMounted, setHasMounted] = useState(false);
+
+
+
   const [openAiVoice, setOpenAiVoice] = useState<string>("nova"); // default
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [ttsMode, setTtsMode] = useState<"device" | "openai">("device");
@@ -54,7 +62,12 @@ export default function Page() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
 
-
+  useEffect(() => {
+    setHasMounted(true);
+    setDeviceSupported(
+      !!((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition)
+    );
+  }, []);
 
 
   useEffect(() => {
@@ -90,13 +103,85 @@ export default function Page() {
   }
 
 
+  function isSpeechRecognitionSupported() {
+    if (typeof window === "undefined") return false;
+    return !!(
+      (window as any).SpeechRecognition ||
+      (window as any).webkitSpeechRecognition
+    );
+  }
+
+
   async function startRecording() {
     setStatus("requesting_mic");
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     streamRef.current = stream;
 
-    // --- MediaRecorder (your existing flow) ---
+    // --- Silence detection setup (works for BOTH modes) ---
+    const AudioContextCtor =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+
+    const audioCtx = new AudioContextCtor();
+    audioCtxRef.current = audioCtx;
+
+    const source = audioCtx.createMediaStreamSource(stream);
+    sourceRef.current = source;
+
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyserRef.current = analyser;
+
+    source.connect(analyser);
+
+    // ===== DEVICE STT PATH (Web Speech API) =====
+    if (sttMode === "device") {
+      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (!SR) {
+        // Fallback to cloud if unsupported
+        console.warn("SpeechRecognition not supported; falling back to cloud STT");
+        // Optionally: setSttMode("cloud");
+      } else {
+        finalTranscriptRef.current = "";
+
+        const rec = new SR();
+        speechRecRef.current = rec;
+
+        rec.lang = "en-US";
+        rec.interimResults = true;
+        rec.continuous = true;
+
+        rec.onresult = (event: any) => {
+          const res = event.results[event.results.length - 1];
+          const text = res?.[0]?.transcript ?? "";
+
+          if (res.isFinal) {
+            finalTranscriptRef.current += text + " ";
+            setQuestion(finalTranscriptRef.current.trim());
+          } else {
+            setQuestion((finalTranscriptRef.current + text).trim());
+          }
+        };
+
+        rec.onerror = (e: any) => {
+          console.error("SpeechRecognition error:", e);
+          // If device STT fails mid-stream, you could fallback to cloud here if you want.
+        };
+
+        rec.onend = () => {
+          // If it ends naturally, ensure we clean up
+          // (silence monitor might also call stopRecording)
+        };
+
+        rec.start();
+
+        setStatus("recording");
+        startSilenceMonitor();
+        return; // IMPORTANT: don't start MediaRecorder in device mode
+      }
+    }
+
+    // ===== CLOUD STT PATH (your existing MediaRecorder flow) =====
     const mr = new MediaRecorder(stream);
     chunksRef.current = [];
 
@@ -117,31 +202,33 @@ export default function Page() {
 
     mediaRecorderRef.current = mr;
 
-    // --- Silence detection setup (NO second recognizer) ---
-    const AudioContextCtor =
-      (window as any).AudioContext || (window as any).webkitAudioContext;
-
-    const audioCtx = new AudioContextCtor();
-    audioCtxRef.current = audioCtx;
-
-    const source = audioCtx.createMediaStreamSource(stream);
-    sourceRef.current = source;
-
-    const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 2048;
-    analyserRef.current = analyser;
-
-    source.connect(analyser);
-
-    // Start recording + monitoring
     mr.start();
     setStatus("recording");
     startSilenceMonitor();
   }
 
-
   function stopRecording() {
-    // prevent double-stop
+    // DEVICE mode stop
+    if (sttMode === "device") {
+      stopSilenceMonitor();
+
+      try {
+        speechRecRef.current?.stop?.();
+      } catch (e) {
+        // ignore
+      } finally {
+        speechRecRef.current = null;
+      }
+
+      // stop the mic
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+
+      setStatus("idle"); // or whatever "ready" state you use after transcript is set
+      return;
+    }
+
+    // CLOUD mode stop (your existing behavior)
     if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== "recording") return;
 
     stopSilenceMonitor();
@@ -367,6 +454,40 @@ export default function Page() {
             rows={4}
           />
 
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-medium text-slate-600">
+              Speech-to-Text
+            </span>
+
+            <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1">
+              <button
+                type="button"
+                onClick={() => setSttMode("cloud")}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition
+        ${sttMode === "cloud"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                  }`}
+              >
+                Cloud
+              </button>
+
+              <button
+                type="button"
+                onClick={() => deviceSupported && setSttMode("device")}
+                disabled={!deviceSupported}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition
+        ${sttMode === "device"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                  }
+        ${!deviceSupported ? "opacity-40 cursor-not-allowed" : ""}
+      `}
+              >
+                On-Device
+              </button>
+            </div>
+          </div>
 
 
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
@@ -377,7 +498,7 @@ export default function Page() {
                 className="alex-btn alex-btn-primary w-full sm:w-auto"
                 onClick={startRecording}
               >
-                🎙️ Record
+                🎙️ Listen
               </button>
             ) : (
               <button
@@ -388,14 +509,16 @@ export default function Page() {
               </button>
             )}
             <button
-              className="alex-btn alex-btn-primary w-full sm:w-auto"
+              className="alex-btn alex-btn-primary w-full sm:w-auto disabled:opacity-40 disabled:cursor-not-allowed"
               onClick={() => {
                 if (!question.trim()) return;
                 askAlex(question);
               }}
+              disabled={!question.trim()}
             >
               Ask ALEX
             </button>
+
           </div>
           {/*{transcript && (
             <div className="text-xs text-slate-600">
@@ -409,23 +532,36 @@ export default function Page() {
         <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-3">
 
           <div className="flex flex-wrap items-center gap-2 mb-2">
-            <span className="text-sm text-slate-600">TTS:</span>
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-medium text-slate-600">Text-to-Speech</span>
 
-            <button
-              type="button"
-              onClick={() => setTtsMode("device")}
-              className={`alex-btn w-full sm:w-auto ${ttsMode === "device" ? "alex-btn-primary" : "alex-btn-secondary"}`}
-            >
-              Device
-            </button>
+              <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setTtsMode("device")}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition
+        ${ttsMode === "device"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                    }`}
+                >
+                  On-Device
+                </button>
 
-            <button
-              type="button"
-              onClick={() => setTtsMode("openai")}
-              className={`alex-btn w-full sm:w-auto ${ttsMode === "openai" ? "alex-btn-primary" : "alex-btn-secondary"}`}
-            >
-              OpenAI
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setTtsMode("openai")}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition
+        ${ttsMode === "openai"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                    }`}
+                >
+                  OpenAI
+                </button>
+              </div>
+            </div>
+
 
             <button
               type="button"
@@ -497,9 +633,6 @@ export default function Page() {
               </select>
             </div>
           )}
-
-
-
         </section>
 
         {/* Response */}
@@ -517,25 +650,13 @@ export default function Page() {
 
         <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-3">
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-
-
-            {/*<button
-              className="alex-btn alex-btn-primary w-full sm:w-auto"
-              onClick={bargeIn}
-            >
-              🛑 Stop Audio
-            </button>*/}
             <div className="text-sm text-slate-600">Status: {status}</div>
           </div>
         </section>
 
-
       </div>
     </div>
   );
-
-
-
 
 
 }
