@@ -135,7 +135,7 @@ export default function Page() {
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Type a question or tap Record…"
             className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm shadow-sm
-                      focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-300 placeholder:text-slate-600"
+                      focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-300 placeholder:text-slate-600 text-slate-600"
             rows={4}
           />
 

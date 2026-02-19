@@ -74,7 +74,7 @@ export function AlexRenderer({ result }: { result: AlexResult }) {
       )}*/}
 
       {kb_limitations && (
-        <div className="alex-section alex-warning">
+        <div className="alex-section alex-warning text-slate-900">
           <h3>KB Notes</h3>
           <p>{kb_limitations}</p>
         </div>
