@@ -4,10 +4,24 @@ import { useRef, useState } from "react";
 import { buildSpeakableScript } from "@/lib/speechScript";
 import { AlexRenderer } from "@/lib/AlexRenderer";
 
-
 type AlexResult = any; // for MVP; you can strongly type this later
+type ChatMsg = { role: "user" | "assistant"; content: string };
+
 
 export default function Page() {
+
+  const [messages, setMessages] = useState<ChatMsg[]>([]);
+
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const silenceStartRef = useRef<number | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const SILENCE_MS = 1200;     // how long quiet must last before stopping
+  const THRESHOLD = 0.02;      // volume threshold (0..1-ish). lower = more sensitive
+
+
   const [status, setStatus] = useState<string>("idle");
   const [transcript, setTranscript] = useState<string>("");
   const [question, setQuestion] = useState<string>("");
@@ -20,7 +34,11 @@ export default function Page() {
 
   async function startRecording() {
     setStatus("requesting_mic");
+
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    streamRef.current = stream;
+
+    // --- MediaRecorder (your existing flow) ---
     const mr = new MediaRecorder(stream);
     chunksRef.current = [];
 
@@ -29,20 +47,50 @@ export default function Page() {
     };
 
     mr.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop());
+      stopSilenceMonitor();
+
+      // stop the mic
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+
       const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
       await transcribe(blob);
     };
 
     mediaRecorderRef.current = mr;
+
+    // --- Silence detection setup (NO second recognizer) ---
+    const AudioContextCtor =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+
+    const audioCtx = new AudioContextCtor();
+    audioCtxRef.current = audioCtx;
+
+    const source = audioCtx.createMediaStreamSource(stream);
+    sourceRef.current = source;
+
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyserRef.current = analyser;
+
+    source.connect(analyser);
+
+    // Start recording + monitoring
     mr.start();
     setStatus("recording");
+    startSilenceMonitor();
   }
 
+
   function stopRecording() {
-    mediaRecorderRef.current?.stop();
+    // prevent double-stop
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== "recording") return;
+
+    stopSilenceMonitor();
+    mediaRecorderRef.current.stop();
     setStatus("transcribing");
   }
+
 
   async function transcribe(blob: Blob) {
     setStatus("transcribing");
@@ -59,19 +107,40 @@ export default function Page() {
     setStatus("ready");
   }
 
-  async function askAlex(q: string) {
+  async function askAlex(userText: string) {
     setStatus("asking");
+
+    const nextMessages: ChatMsg[] = [
+      ...messages,
+      { role: "user", content: userText },
+    ];
+    setMessages(nextMessages);
+
     const res = await fetch("/api/ask", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ question: q }),
+      body: JSON.stringify({ messages: nextMessages })
+
     });
+
 
     const json = await res.json();
     setResult(json);
+
+    // Store *what ALEX said* back into history.
+    // Pick the right field depending on your API response shape.
+    const alexText =
+      json?.final_text ??
+      json?.answer ??
+      json?.content ??
+      JSON.stringify(json);
+
+    setMessages((prev) => [...prev, { role: "assistant", content: alexText }]);
+
     setStatus("answered");
     return json;
   }
+
 
   async function speakResult(r: any) {
     // barge-in: stop existing audio + abort in-flight tts request
@@ -114,6 +183,61 @@ export default function Page() {
       ttsAbortRef.current = null;
     }
   }
+
+  function stopSilenceMonitor() {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    rafRef.current = null;
+    silenceStartRef.current = null;
+
+    if (sourceRef.current) sourceRef.current.disconnect();
+    if (analyserRef.current) analyserRef.current.disconnect();
+
+    sourceRef.current = null;
+    analyserRef.current = null;
+
+    if (audioCtxRef.current) {
+      audioCtxRef.current.close().catch(() => { });
+      audioCtxRef.current = null;
+    }
+  }
+
+  function startSilenceMonitor() {
+    const analyser = analyserRef.current;
+    if (!analyser) return;
+
+    const data = new Uint8Array(analyser.fftSize);
+
+    const tick = () => {
+      analyser.getByteTimeDomainData(data);
+
+      // Compute RMS volume (rough loudness)
+      let sumSquares = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = (data[i] - 128) / 128; // -1..1
+        sumSquares += v * v;
+      }
+      const rms = Math.sqrt(sumSquares / data.length);
+
+      const now = performance.now();
+
+      if (rms < THRESHOLD) {
+        if (silenceStartRef.current == null) silenceStartRef.current = now;
+
+        if (now - silenceStartRef.current >= SILENCE_MS) {
+          // silence long enough -> stop recording
+          stopRecording();
+          return; // stop loop
+        }
+      } else {
+        silenceStartRef.current = null; // reset silence timer when speech resumes
+      }
+
+      rafRef.current = requestAnimationFrame(tick);
+    };
+
+    rafRef.current = requestAnimationFrame(tick);
+  }
+
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -195,7 +319,13 @@ export default function Page() {
         {/* Response */}
         <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-4">
           <div className="text-sm font-medium text-slate-900 mb-2">Response</div>
-          {result ? <AlexRenderer result={result} /> : <div className="text-slate-600">(none yet)</div>}
+          {status === "asking" ? (
+            <div className="text-slate-600">Asking ALEX, just a moment...</div>
+          ) : result ? (
+            <AlexRenderer result={result} />
+          ) : (
+            <div className="text-slate-600">(none yet)</div>
+          )}
         </section>
 
 
