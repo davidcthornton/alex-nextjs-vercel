@@ -316,7 +316,10 @@ export default function Page() {
         utterRef.current = utter;
 
         const selected = getSelectedDeviceVoice();
-        if (selected) utter.voice = selected;
+        if (selected) {
+          utter.voice = selected;
+          utter.lang = selected.lang; // 👈 important
+        }
 
         utter.onstart = () => setStatus("playing");
         utter.onend = () => {
@@ -543,6 +546,27 @@ export default function Page() {
               <span className="font-semibold">Transcript:</span> {transcript}
             </div>
           )}*/}
+
+          <button
+            type="button"
+            className="alex-btn alex-btn-secondary w-full sm:w-auto"
+            onClick={() => {
+              const v = getSelectedDeviceVoice();
+              const u = new SpeechSynthesisUtterance(
+                "Voice test. The quick brown fox jumps over the lazy dog. One two three."
+              );
+              if (v) {
+                u.voice = v;
+                u.lang = v.lang;
+              }
+              window.speechSynthesis.cancel();
+              window.speechSynthesis.speak(u);
+            }}
+            disabled={ttsMode !== "device"}
+          >
+            Test Voice
+          </button>
+
 
           {sttMode === "device" && (
             <div className="text-xs text-slate-500 mt-2">
