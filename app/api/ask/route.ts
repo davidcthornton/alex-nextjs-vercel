@@ -52,7 +52,7 @@ export async function POST(req: Request) {
   const kbHtml = await readFile(process.cwd() + "/knowledge.html", "utf8");
 
   const resp = await openai.responses.create({
-    model: "gpt-5.2",
+    model: "gpt-5.1",
     input: [
       { role: "system", content: systemPrompt },
       { role: "developer", content: developerPrompt },
