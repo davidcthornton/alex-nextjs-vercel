@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react"; 
+import { useEffect, useRef, useState } from "react";
 import { buildSpeakableScript } from "@/lib/speechScript";
 import { AlexRenderer } from "@/lib/AlexRenderer";
 
@@ -10,7 +10,24 @@ type ChatMsg = { role: "user" | "assistant"; content: string };
 
 
 export default function Page() {
+  const OPENAI_TTS_VOICES = [
+    "alloy",
+    "ash",
+    "ballad",
+    "coral",
+    "echo",
+    "fable",
+    "onyx",
+    "nova",
+    "sage",
+    "shimmer",
+    "verse",
+    "marin",
+    "cedar",
+  ] as const;
 
+
+  const [openAiVoice, setOpenAiVoice] = useState<string>("nova"); // default
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [ttsMode, setTtsMode] = useState<"device" | "openai">("device");
   const utterRef = useRef<SpeechSynthesisUtterance | null>(null);
@@ -184,7 +201,8 @@ export default function Page() {
 
 
   async function speakResult(r: any) {
-    // barge-in: stop existing audio + abort in-flight tts request
+    // barge-in: stop existing audio + abort in-flight tts request    
+    console.log(r);
     bargeIn();
 
     const script = buildSpeakableScript(r);
@@ -223,7 +241,10 @@ export default function Page() {
     const res = await fetch("/api/tts", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ text: script }),
+      body: JSON.stringify({
+        text: script,
+        voice: openAiVoice,
+      }),
       signal: ac.signal,
     });
 
@@ -459,6 +480,25 @@ export default function Page() {
               </select>
             </div>
           )}
+
+          {ttsMode === "openai" && (
+            <div className="space-y-1">
+              <label className="text-sm text-slate-600">OpenAI voice</label>
+              <select
+                className="w-full rounded-xl border border-slate-300 bg-white p-2 text-sm"
+                value={openAiVoice}
+                onChange={(e) => setOpenAiVoice(e.target.value)}
+              >
+                {OPENAI_TTS_VOICES.map((v) => (
+                  <option key={v} value={v}>
+                    {v.charAt(0).toUpperCase() + v.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+
 
         </section>
 
