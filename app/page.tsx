@@ -456,6 +456,11 @@ export default function Page() {
 
         </header>
 
+        <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-3">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+            <div className="text-sm text-slate-600">Status: {status}</div>
+          </div>
+        </section>
 
 
         {/* Input */}
@@ -547,25 +552,7 @@ export default function Page() {
             </div>
           )}*/}
 
-          <button
-            type="button"
-            className="alex-btn alex-btn-secondary w-full sm:w-auto"
-            onClick={() => {
-              const v = getSelectedDeviceVoice();
-              const u = new SpeechSynthesisUtterance(
-                "Voice test. The quick brown fox jumps over the lazy dog. One two three."
-              );
-              if (v) {
-                u.voice = v;
-                u.lang = v.lang;
-              }
-              window.speechSynthesis.cancel();
-              window.speechSynthesis.speak(u);
-            }}
-            disabled={ttsMode !== "device"}
-          >
-            Test Voice
-          </button>
+
 
 
           {sttMode === "device" && (
@@ -632,7 +619,32 @@ export default function Page() {
           >
             🔊 Read Response Aloud
           </button>
+
+
+          <button
+            type="button"
+            className="alex-btn alex-btn-secondary w-full sm:w-auto"
+            onClick={() => {
+              const v = getSelectedDeviceVoice();
+              const u = new SpeechSynthesisUtterance(
+                "Voice test. The quick brown fox jumps over the lazy dog. One two three."
+              );
+              if (v) {
+                u.voice = v;
+                u.lang = v.lang;
+              }
+              window.speechSynthesis.cancel();
+              window.speechSynthesis.speak(u);
+            }}
+            disabled={ttsMode !== "device"}
+          >
+            Test Voice
+          </button>
+
+
           <audio ref={audioRef} controls className="w-full" />
+
+
 
 
           {ttsMode === "device" && (
@@ -700,11 +712,7 @@ export default function Page() {
         </section>
 
 
-        <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-3">
-          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-            <div className="text-sm text-slate-600">Status: {status}</div>
-          </div>
-        </section>
+
 
       </div>
     </div>
