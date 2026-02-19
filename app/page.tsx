@@ -27,7 +27,7 @@ export default function Page() {
   ] as const;
 
 
-  const [sttMode, setSttMode] = useState<"device" | "cloud">("cloud");
+  const [sttMode, setSttMode] = useState<"device" | "cloud">("device");
   const speechRecRef = useRef<any>(null);
   const finalTranscriptRef = useRef<string>("");
   const [deviceSupported, setDeviceSupported] = useState(false);
@@ -460,33 +460,39 @@ export default function Page() {
             </span>
 
             <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => setSttMode("cloud")}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition
-        ${sttMode === "cloud"
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                  }`}
-              >
-                Cloud
-              </button>
 
+              {/* On-Device FIRST (left side) */}
               <button
                 type="button"
                 onClick={() => deviceSupported && setSttMode("device")}
                 disabled={!deviceSupported}
                 className={`px-3 py-1 text-xs font-medium rounded-md transition
-        ${sttMode === "device"
+      ${sttMode === "device"
                     ? "bg-white text-slate-900 shadow-sm"
                     : "text-slate-600 hover:text-slate-900"
                   }
-        ${!deviceSupported ? "opacity-40 cursor-not-allowed" : ""}
-      `}
+      ${!deviceSupported ? "opacity-40 cursor-not-allowed" : ""}
+    `}
               >
                 On-Device
               </button>
+
+              {/* Cloud SECOND (right side) */}
+              <button
+                type="button"
+                onClick={() => setSttMode("cloud")}
+                className={`px-3 py-1 text-xs font-medium rounded-md transition
+      ${sttMode === "cloud"
+                    ? "bg-white text-slate-900 shadow-sm"
+                    : "text-slate-600 hover:text-slate-900"
+                  }
+    `}
+              >
+                Cloud
+              </button>
+
             </div>
+
           </div>
 
 
