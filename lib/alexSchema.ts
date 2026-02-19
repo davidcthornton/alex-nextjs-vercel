@@ -4,8 +4,7 @@ export const alexJsonSchema = {
     type: "object",
     additionalProperties: false,
     properties: {
-      status: { type: "string", enum: ["ok", "needs_clarification", "not_in_kb", "unclear_in_kb"] },
-      clarifying_question: { type: ["string", "null"] },
+      status: { type: "string", enum: ["ok", "not_in_kb", "unclear_in_kb"] },
       title: { type: ["string", "null"] },
       summary: { type: ["string", "null"] },
       steps: {
@@ -35,6 +34,6 @@ export const alexJsonSchema = {
       },
       kb_limitations: { type: ["string", "null"] },
     },
-    required: ["status", "clarifying_question", "title", "summary", "steps", "relevant_excerpts", "kb_limitations"],
+    required: ["status", "title", "summary", "steps", "relevant_excerpts", "kb_limitations"],
   },
 } as const;
