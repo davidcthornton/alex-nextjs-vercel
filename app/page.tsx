@@ -648,12 +648,14 @@ export default function Page() {
                   <option value="">Loading voices…</option>
                 ) : (
                   deviceVoices
-                    // Optional: put English first
+                    .filter(v => v.lang?.toLowerCase().startsWith("en"))
                     .slice()
                     .sort((a, b) => {
-                      const aEn = a.lang?.toLowerCase().startsWith("en") ? 0 : 1;
-                      const bEn = b.lang?.toLowerCase().startsWith("en") ? 0 : 1;
-                      if (aEn !== bEn) return aEn - bEn;
+                      // Prefer true local on-device voices if property exists
+                      const aLocal = (a as any).localService ? 0 : 1;
+                      const bLocal = (b as any).localService ? 0 : 1;
+                      if (aLocal !== bLocal) return aLocal - bLocal;
+
                       return (a.name || "").localeCompare(b.name || "");
                     })
                     .map((v) => (
@@ -665,6 +667,7 @@ export default function Page() {
               </select>
             </div>
           )}
+
 
           {ttsMode === "openai" && (
             <div className="space-y-1">
