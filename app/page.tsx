@@ -27,11 +27,12 @@ export default function Page() {
   ] as const;
 
 
-  const [sttMode, setSttMode] = useState<"device" | "cloud">("device");
+  const [sttMode, setSttMode] = useState<"device" | "cloud">("cloud");
   const speechRecRef = useRef<any>(null);
   const finalTranscriptRef = useRef<string>("");
   const [deviceSupported, setDeviceSupported] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
+  const [sttDebug, setSttDebug] = useState<string>("");
 
 
 
@@ -143,35 +144,46 @@ export default function Page() {
         // Optionally: setSttMode("cloud");
       } else {
         finalTranscriptRef.current = "";
-
         const rec = new SR();
         speechRecRef.current = rec;
 
         rec.lang = "en-US";
         rec.interimResults = true;
         rec.continuous = true;
+        rec.maxAlternatives = 1;
+
+        const log = (msg: string) => {
+          console.log("[STT]", msg);
+          setSttDebug(msg);
+        };
+
+        rec.onstart = () => log("onstart");
+        rec.onaudiostart = () => log("onaudiostart");
+        rec.onspeechstart = () => log("onspeechstart");
+        rec.onsoundstart = () => log("onsoundstart");
 
         rec.onresult = (event: any) => {
-          const res = event.results[event.results.length - 1];
-          const text = res?.[0]?.transcript ?? "";
+          log(`onresult: results=${event.results?.length ?? 0}`);
 
-          if (res.isFinal) {
-            finalTranscriptRef.current += text + " ";
-            setQuestion(finalTranscriptRef.current.trim());
-          } else {
-            setQuestion((finalTranscriptRef.current + text).trim());
+          // Robust: append ALL new results, not just the last one
+          let interim = "";
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const res = event.results[i];
+            const text = res?.[0]?.transcript ?? "";
+            if (res.isFinal) finalTranscriptRef.current += text + " ";
+            else interim += text;
           }
+
+          setQuestion((finalTranscriptRef.current + interim).trim());
         };
 
         rec.onerror = (e: any) => {
-          console.error("SpeechRecognition error:", e);
-          // If device STT fails mid-stream, you could fallback to cloud here if you want.
+          log(`onerror: ${e?.error ?? "unknown"} ${e?.message ?? ""}`);
         };
 
-        rec.onend = () => {
-          // If it ends naturally, ensure we clean up
-          // (silence monitor might also call stopRecording)
-        };
+        rec.onnomatch = () => log("onnomatch");
+        rec.onend = () => log("onend");
+
 
         rec.start();
 
@@ -531,6 +543,13 @@ export default function Page() {
               <span className="font-semibold">Transcript:</span> {transcript}
             </div>
           )}*/}
+
+          {sttMode === "device" && (
+            <div className="text-xs text-slate-500 mt-2">
+              STT debug: {sttDebug || "(none)"}
+            </div>
+          )}
+
         </section>
 
         {/* Audio */}
