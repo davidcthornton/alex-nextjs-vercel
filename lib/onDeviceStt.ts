@@ -28,7 +28,7 @@ export function startOnDeviceTranscription(opts: {
   rec.interimResults = opts.interimResults ?? true;
   rec.continuous = opts.continuous ?? true;
 
-  rec.onresult = (event: SpeechRecognitionEvent) => {
+  rec.onresult = (event: any) => {
     // Grab the latest result chunk
     const res = event.results[event.results.length - 1];
     const text = res[0]?.transcript ?? "";
