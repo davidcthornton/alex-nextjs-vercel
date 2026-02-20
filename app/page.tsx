@@ -84,6 +84,14 @@ export default function Page() {
 
   useEffect(() => {
     if (sttMode !== "device") return;
+
+    if (!listening && status === "recording") {
+      setStatus("ready");
+    }
+  }, [listening, sttMode, status]);
+
+  useEffect(() => {
+    if (sttMode !== "device") return;
     // While device STT is active, keep question updated live
     setQuestion((deviceTranscript || "").trim());
   }, [deviceTranscript, sttMode]);
@@ -148,35 +156,13 @@ export default function Page() {
         setSttMode("cloud");
         // fall through into cloud path below
       } else {
-        // (Optional) keep your silence monitor behavior:
-        // We still grab the mic stream ONLY for silence detection.
-        // SpeechRecognition will separately access the mic internally.
-        /*
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        streamRef.current = stream;
 
-        // --- Silence detection setup ---
-        const AudioContextCtor =
-          (window as any).AudioContext || (window as any).webkitAudioContext;
-
-        const audioCtx = new AudioContextCtor();
-        audioCtxRef.current = audioCtx;
-
-        const source = audioCtx.createMediaStreamSource(stream);
-        sourceRef.current = source;
-
-        const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 2048;
-        analyserRef.current = analyser;
-
-        source.connect(analyser);
-        */
         // Start device speech recognition
         resetTranscript();
         finalTranscriptRef.current = ""; // you can keep this if you still use it elsewhere
 
         SpeechRecognition.startListening({
-          continuous: true,
+          continuous: false,
           language: "en-US",
         });
 
@@ -234,15 +220,8 @@ export default function Page() {
   function stopRecording() {
     // DEVICE mode stop
     if (sttMode === "device") {
-      stopSilenceMonitor();
 
-      // Stop speech recognition
       SpeechRecognition.stopListening();
-
-      // stop the mic stream used for silence monitor (if we started it)
-      streamRef.current?.getTracks().forEach((t) => t.stop());
-      streamRef.current = null;
-
       // Ensure question is set from the final transcript
       setQuestion((deviceTranscript || "").trim());
       setStatus("ready");
@@ -574,19 +553,19 @@ export default function Page() {
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
 
 
-            {status !== "recording" ? (
-              <button
-                className="alex-btn alex-btn-primary w-full sm:w-auto"
-                onClick={startRecording}
-              >
-                🎙️ Listen
-              </button>
-            ) : (
+            {(sttMode === "device" ? listening : status === "recording") ? (
               <button
                 className="alex-btn alex-btn-primary w-full sm:w-auto"
                 onClick={stopRecording}
               >
                 ⏹️ Stop
+              </button>
+            ) : (
+              <button
+                className="alex-btn alex-btn-primary w-full sm:w-auto"
+                onClick={startRecording}
+              >
+                🎙️ Listen
               </button>
             )}
             <button
@@ -816,13 +795,6 @@ export default function Page() {
             <div className="text-slate-600">(none yet)</div>
           )}
         </section>
-
-        <div className="rounded-xl border border-slate-300 bg-white p-4 shadow-sm min-h-[120px]">
-          <p className="text-slate-800 text-sm whitespace-pre-wrap">
-            {deviceTranscript || "Speech will appear here…"}
-          </p>
-        </div>
-
 
       </div>
     </div>
