@@ -151,6 +151,7 @@ export default function Page() {
         // (Optional) keep your silence monitor behavior:
         // We still grab the mic stream ONLY for silence detection.
         // SpeechRecognition will separately access the mic internally.
+        /*
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         streamRef.current = stream;
 
@@ -169,7 +170,7 @@ export default function Page() {
         analyserRef.current = analyser;
 
         source.connect(analyser);
-
+        */
         // Start device speech recognition
         resetTranscript();
         finalTranscriptRef.current = ""; // you can keep this if you still use it elsewhere
@@ -816,7 +817,11 @@ export default function Page() {
           )}
         </section>
 
-
+        <div className="rounded-xl border border-slate-300 bg-white p-4 shadow-sm min-h-[120px]">
+          <p className="text-slate-800 text-sm whitespace-pre-wrap">
+            {deviceTranscript || "Speech will appear here…"}
+          </p>
+        </div>
 
 
       </div>
