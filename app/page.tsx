@@ -38,8 +38,7 @@ export default function Page() {
   >("neutral");
 
 
-  const [sttMode, setSttMode] = useState<"device" | "cloud">("cloud");
-  const speechRecRef = useRef<any>(null);
+  const [sttMode, setSttMode] = useState<"device" | "cloud">("device");
   const finalTranscriptRef = useRef<string>("");
   const [deviceSupported, setDeviceSupported] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
@@ -52,8 +51,6 @@ export default function Page() {
   } = useSpeechRecognition();
 
   const deviceSttSupported = hasMounted && browserSupportsSpeechRecognition;
-
-
 
   const [openAiVoice, setOpenAiVoice] = useState<string>("nova"); // default
   const [messages, setMessages] = useState<ChatMsg[]>([]);
@@ -136,7 +133,6 @@ export default function Page() {
     return deviceVoices.find(v => v.voiceURI === deviceVoiceURI) ?? null;
   }
 
-
   function isSpeechRecognitionSupported() {
     if (typeof window === "undefined") return false;
     return !!(
@@ -148,18 +144,15 @@ export default function Page() {
 
   async function startRecording() {
     setStatus("requesting_mic");
-
-    // If user chose on-device, use react-speech-recognition
+    
     if (sttMode === "device") {
       if (!deviceSttSupported) {
         console.warn("Device STT not supported; falling back to cloud STT");
         setSttMode("cloud");
         // fall through into cloud path below
       } else {
-
-        // Start device speech recognition
-        resetTranscript();
-        finalTranscriptRef.current = ""; // you can keep this if you still use it elsewhere
+        //resetTranscript();
+        finalTranscriptRef.current = ""; 
 
         SpeechRecognition.startListening({
           continuous: false,
@@ -168,7 +161,7 @@ export default function Page() {
 
         setStatus("recording");
         startSilenceMonitor();
-        return; // IMPORTANT: don't start MediaRecorder in device mode
+        return; 
       }
     }
 
@@ -265,9 +258,7 @@ export default function Page() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ messages: nextMessages })
-
     });
-
 
     const json = await res.json();
     setResult(json);
@@ -379,7 +370,7 @@ export default function Page() {
       body: JSON.stringify({
         text: script,
         voice: openAiVoice,
-        tone: openAiTone, // "neutral" | "calm" | ...
+        tone: openAiTone, 
       }),
       signal: ac.signal,
     });
@@ -394,7 +385,6 @@ export default function Page() {
     audio.onplaying = () => setStatus("playing");
     audio.onended = () => setStatus("answered");
     audio.onpause = () => {
-      // if user paused/stopped manually, don't claim we're "playing"
       if (status === "playing") setStatus("answered");
     };
 
@@ -403,20 +393,17 @@ export default function Page() {
 
 
   function bargeIn() {
-    // stop device TTS
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
       window.speechSynthesis.cancel();
       utterRef.current = null;
     }
 
-    // stop <audio> playback
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
       audioRef.current.src = "";
     }
 
-    // abort fetch
     if (ttsAbortRef.current) {
       ttsAbortRef.current.abort();
       ttsAbortRef.current = null;
@@ -482,7 +469,6 @@ export default function Page() {
   return (
     <div className="min-h-screen bg-slate-100">
       <div className="mx-auto max-w-3xl p-4 sm:p-6 space-y-4">
-        {/* Header */}
         <header className="space-y-1">
           <h1 className="text-xl sm:text-2xl font-semibold text-slate-900">
             ALEX – Artificial Law Enforcement eXpert
@@ -496,8 +482,6 @@ export default function Page() {
           </div>
         </section>
 
-
-        {/* Input */}
         <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-4 space-y-2">
           <textarea
             value={question}
@@ -514,8 +498,6 @@ export default function Page() {
             </span>
 
             <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1">
-
-              {/* On-Device FIRST (left side) */}
               <button
                 type="button"
                 onClick={() => deviceSttSupported && setSttMode("device")}
@@ -531,7 +513,6 @@ export default function Page() {
                 On-Device
               </button>
 
-              {/* Cloud SECOND (right side) */}
               <button
                 type="button"
                 onClick={() => setSttMode("cloud")}
@@ -544,15 +525,11 @@ export default function Page() {
               >
                 Cloud
               </button>
-
             </div>
 
           </div>
 
-
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-
-
             {(sttMode === "device" ? listening : status === "recording") ? (
               <button
                 className="alex-btn alex-btn-primary w-full sm:w-auto"
@@ -580,24 +557,13 @@ export default function Page() {
             </button>
 
           </div>
-          {/*{transcript && (
-            <div className="text-xs text-slate-600">
-              <span className="font-semibold">Transcript:</span> {transcript}
-            </div>
-          )}*/}
-
-
-
-
+          
           {sttMode === "device" && (
             <div className="text-xs text-slate-500 mt-2">
               STT debug: {sttDebug || "(none)"}
             </div>
           )}
-
         </section>
-
-        {/* Audio */}
 
         <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-3">
 
@@ -632,7 +598,6 @@ export default function Page() {
               </div>
             </div>
 
-
             <button
               type="button"
               onClick={bargeIn}
@@ -642,7 +607,6 @@ export default function Page() {
               🛑 Stop Audio
             </button>
           </div>
-
 
           <button
             className="alex-btn alex-btn-primary w-full sm:w-auto"
@@ -675,11 +639,7 @@ export default function Page() {
             Test Voice
           </button>
 
-
           <audio ref={audioRef} controls className="w-full" />
-
-
-
 
           {ttsMode === "device" && (
             <div className="space-y-1">
@@ -784,7 +744,6 @@ export default function Page() {
           )}
         </section>
 
-        {/* Response */}
         <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-4">
           <div className="text-sm font-medium text-slate-900 mb-2">Response</div>
           {status === "asking" ? (
@@ -799,6 +758,5 @@ export default function Page() {
       </div>
     </div>
   );
-
 
 }
