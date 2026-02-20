@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { buildSpeakableScript } from "@/lib/speechScript";
 import { AlexRenderer } from "@/lib/AlexRenderer";
-
+import SpeechRecognition, { useSpeechRecognition } from "react-speech-recognition";
 
 type AlexResult = any; // for MVP; you can strongly type this later
 type ChatMsg = { role: "user" | "assistant"; content: string };
@@ -44,6 +44,14 @@ export default function Page() {
   const [deviceSupported, setDeviceSupported] = useState(false);
   const [hasMounted, setHasMounted] = useState(false);
   const [sttDebug, setSttDebug] = useState<string>("");
+  const {
+    transcript: deviceTranscript,
+    listening,
+    browserSupportsSpeechRecognition,
+    resetTranscript,
+  } = useSpeechRecognition();
+
+  const deviceSttSupported = hasMounted && browserSupportsSpeechRecognition;
 
 
 
@@ -73,6 +81,12 @@ export default function Page() {
   const chunksRef = useRef<BlobPart[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (sttMode !== "device") return;
+    // While device STT is active, keep question updated live
+    setQuestion((deviceTranscript || "").trim());
+  }, [deviceTranscript, sttMode]);
 
   useEffect(() => {
     setHasMounted(true);
@@ -127,76 +141,43 @@ export default function Page() {
   async function startRecording() {
     setStatus("requesting_mic");
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    streamRef.current = stream;
-
-    // --- Silence detection setup (works for BOTH modes) ---
-    const AudioContextCtor =
-      (window as any).AudioContext || (window as any).webkitAudioContext;
-
-    const audioCtx = new AudioContextCtor();
-    audioCtxRef.current = audioCtx;
-
-    const source = audioCtx.createMediaStreamSource(stream);
-    sourceRef.current = source;
-
-    const analyser = audioCtx.createAnalyser();
-    analyser.fftSize = 2048;
-    analyserRef.current = analyser;
-
-    source.connect(analyser);
-
-    // ===== DEVICE STT PATH (Web Speech API) =====
+    // If user chose on-device, use react-speech-recognition
     if (sttMode === "device") {
-      const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (!SR) {
-        // Fallback to cloud if unsupported
-        console.warn("SpeechRecognition not supported; falling back to cloud STT");
-        // Optionally: setSttMode("cloud");
+      if (!deviceSttSupported) {
+        console.warn("Device STT not supported; falling back to cloud STT");
+        setSttMode("cloud");
+        // fall through into cloud path below
       } else {
-        finalTranscriptRef.current = "";
-        const rec = new SR();
-        speechRecRef.current = rec;
+        // (Optional) keep your silence monitor behavior:
+        // We still grab the mic stream ONLY for silence detection.
+        // SpeechRecognition will separately access the mic internally.
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        streamRef.current = stream;
 
-        rec.lang = "en-US";
-        rec.interimResults = true;
-        rec.continuous = true;
-        rec.maxAlternatives = 1;
+        // --- Silence detection setup ---
+        const AudioContextCtor =
+          (window as any).AudioContext || (window as any).webkitAudioContext;
 
-        const log = (msg: string) => {
-          console.log("[STT]", msg);
-          setSttDebug(msg);
-        };
+        const audioCtx = new AudioContextCtor();
+        audioCtxRef.current = audioCtx;
 
-        rec.onstart = () => log("onstart");
-        rec.onaudiostart = () => log("onaudiostart");
-        rec.onspeechstart = () => log("onspeechstart");
-        rec.onsoundstart = () => log("onsoundstart");
+        const source = audioCtx.createMediaStreamSource(stream);
+        sourceRef.current = source;
 
-        rec.onresult = (event: any) => {
-          log(`onresult: results=${event.results?.length ?? 0}`);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 2048;
+        analyserRef.current = analyser;
 
-          // Robust: append ALL new results, not just the last one
-          let interim = "";
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const res = event.results[i];
-            const text = res?.[0]?.transcript ?? "";
-            if (res.isFinal) finalTranscriptRef.current += text + " ";
-            else interim += text;
-          }
+        source.connect(analyser);
 
-          setQuestion((finalTranscriptRef.current + interim).trim());
-        };
+        // Start device speech recognition
+        resetTranscript();
+        finalTranscriptRef.current = ""; // you can keep this if you still use it elsewhere
 
-        rec.onerror = (e: any) => {
-          log(`onerror: ${e?.error ?? "unknown"} ${e?.message ?? ""}`);
-        };
-
-        rec.onnomatch = () => log("onnomatch");
-        rec.onend = () => log("onend");
-
-
-        rec.start();
+        SpeechRecognition.startListening({
+          continuous: true,
+          language: "en-US",
+        });
 
         setStatus("recording");
         startSilenceMonitor();
@@ -205,6 +186,9 @@ export default function Page() {
     }
 
     // ===== CLOUD STT PATH (your existing MediaRecorder flow) =====
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    streamRef.current = stream;
+
     const mr = new MediaRecorder(stream);
     chunksRef.current = [];
 
@@ -225,6 +209,22 @@ export default function Page() {
 
     mediaRecorderRef.current = mr;
 
+    // --- Silence detection setup (cloud path) ---
+    const AudioContextCtor =
+      (window as any).AudioContext || (window as any).webkitAudioContext;
+
+    const audioCtx = new AudioContextCtor();
+    audioCtxRef.current = audioCtx;
+
+    const source = audioCtx.createMediaStreamSource(stream);
+    sourceRef.current = source;
+
+    const analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 2048;
+    analyserRef.current = analyser;
+
+    source.connect(analyser);
+
     mr.start();
     setStatus("recording");
     startSilenceMonitor();
@@ -235,19 +235,16 @@ export default function Page() {
     if (sttMode === "device") {
       stopSilenceMonitor();
 
-      try {
-        speechRecRef.current?.stop?.();
-      } catch (e) {
-        // ignore
-      } finally {
-        speechRecRef.current = null;
-      }
+      // Stop speech recognition
+      SpeechRecognition.stopListening();
 
-      // stop the mic
+      // stop the mic stream used for silence monitor (if we started it)
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
 
-      setStatus("idle"); // or whatever "ready" state you use after transcript is set
+      // Ensure question is set from the final transcript
+      setQuestion((deviceTranscript || "").trim());
+      setStatus("ready");
       return;
     }
 
@@ -541,8 +538,8 @@ export default function Page() {
               {/* On-Device FIRST (left side) */}
               <button
                 type="button"
-                onClick={() => deviceSupported && setSttMode("device")}
-                disabled={!deviceSupported}
+                onClick={() => deviceSttSupported && setSttMode("device")}
+                disabled={!deviceSttSupported}
                 className={`px-3 py-1 text-xs font-medium rounded-md transition
       ${sttMode === "device"
                     ? "bg-white text-slate-900 shadow-sm"
