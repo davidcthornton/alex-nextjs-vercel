@@ -26,6 +26,17 @@ export default function Page() {
     "cedar",
   ] as const;
 
+  const [openAiTone, setOpenAiTone] = useState<
+    | "neutral"
+    | "calm"
+    | "confident"
+    | "friendly"
+    | "empathetic"
+    | "urgent"
+    | "authoritative"
+    | "training"
+  >("neutral");
+
 
   const [sttMode, setSttMode] = useState<"device" | "cloud">("cloud");
   const speechRecRef = useRef<any>(null);
@@ -299,6 +310,51 @@ export default function Page() {
   }
 
 
+  async function previewOpenAiVoice() {
+    if (ttsMode !== "openai") return;
+
+    bargeIn();
+
+    const previewText = `This is the ${openAiVoice} voice speaking in a ${openAiTone} tone.`;
+
+    setStatus("tts");
+
+    const ac = new AbortController();
+    ttsAbortRef.current = ac;
+
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        text: previewText,
+        voice: openAiVoice,
+        tone: openAiTone,
+      }),
+      signal: ac.signal,
+    });
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => "");
+      console.error("Preview TTS error:", err);
+      setStatus("answered");
+      return;
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+
+    const audio = audioRef.current!;
+    audio.src = url;
+
+    audio.onplaying = () => setStatus("playing");
+    audio.onended = () => {
+      setStatus("answered");
+      URL.revokeObjectURL(url);
+    };
+
+    await audio.play();
+  }
+
   async function speakResult(r: any) {
     // barge-in: stop existing audio + abort in-flight tts request    
     console.log(r);
@@ -346,6 +402,7 @@ export default function Page() {
       body: JSON.stringify({
         text: script,
         voice: openAiVoice,
+        tone: openAiTone, // "neutral" | "calm" | ...
       }),
       signal: ac.signal,
     });
@@ -695,6 +752,57 @@ export default function Page() {
                   </option>
                 ))}
               </select>
+
+
+
+              {ttsMode === "openai" && (
+                <div className="space-y-1">
+                  <label className="text-sm text-slate-600">
+                    Tone
+                  </label>
+
+                  <select
+                    className="w-full rounded-xl border border-slate-300 bg-white p-2 text-sm
+                 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                    value={openAiTone}
+                    onChange={(e) =>
+                      setOpenAiTone(
+                        e.target.value as
+                        | "neutral"
+                        | "calm"
+                        | "confident"
+                        | "friendly"
+                        | "empathetic"
+                        | "urgent"
+                        | "authoritative"
+                        | "training"
+                      )
+                    }
+                  >
+                    <option value="neutral">Neutral</option>
+                    <option value="calm">Calm / Reassuring</option>
+                    <option value="confident">Confident</option>
+                    <option value="friendly">Friendly</option>
+                    <option value="empathetic">Empathetic</option>
+                    <option value="urgent">Urgent</option>
+                    <option value="authoritative">Authoritative</option>
+                    <option value="training">Training / Instructor</option>
+                  </select>
+
+                  {ttsMode === "openai" && (
+                    <button
+                      type="button"
+                      className="alex-btn alex-btn-secondary w-full sm:w-auto"
+                      onClick={previewOpenAiVoice}
+                    >
+                      🔊 Preview Voice & Tone
+                    </button>
+                  )}
+                </div>
+              )}
+
+
+
             </div>
           )}
         </section>

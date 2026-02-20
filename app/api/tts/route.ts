@@ -36,12 +36,35 @@ const BUILTIN_VOICES = new Set([
   "cedar",
 ]);
 
+
+type Tone =
+  | "neutral"
+  | "calm"
+  | "confident"
+  | "friendly"
+  | "empathetic"
+  | "urgent"
+  | "authoritative"
+  | "training";
+
+const TONE_INSTRUCTIONS: Record<Tone, string> = {
+  neutral: "Speak in a neutral, clear tone.",
+  calm: "Speak calmly and steadily, with a reassuring tone.",
+  confident: "Speak confidently with clear emphasis on key points.",
+  friendly: "Speak in a friendly, approachable tone.",
+  empathetic: "Speak with empathy and support, warm but professional.",
+  urgent: "Speak with urgency and brisk pacing, without sounding panicked.",
+  authoritative: "Speak in an authoritative, command presence tone; concise and direct.",
+  training: "Speak like an instructor: clear, structured, and slightly slower with crisp enunciation.",
+};
+
+
 export async function POST(req: Request) {
   if (!process.env.OPENAI_API_KEY) {
     return Response.json({ error: "Missing OPENAI_API_KEY" }, { status: 500 });
   }
 
-  const { text, voice, format, speed, instructions } = await req.json().catch(() => ({}));
+  const { text, voice, format, speed, tone, instructions } = await req.json().catch(() => ({}));
 
   if (typeof text !== "string" || !text.trim()) {
     return Response.json({ error: "Missing 'text' string" }, { status: 400 });
@@ -73,7 +96,17 @@ export async function POST(req: Request) {
 
 
   const spd = typeof speed === "number" ? speed : undefined;
-  const instr = typeof instructions === "string" ? instructions : undefined;
+
+  // If client provides a tone, use it. Allow explicit "instructions" to override (optional).
+  const toneKey: Tone =
+    typeof tone === "string" && (tone in TONE_INSTRUCTIONS)
+      ? (tone as Tone)
+      : "neutral";
+
+  const instr =
+    typeof instructions === "string" && instructions.trim()
+      ? instructions.trim()
+      : TONE_INSTRUCTIONS[toneKey];
 
   try {
     const audio = await openai.audio.speech.create({
@@ -91,6 +124,7 @@ export async function POST(req: Request) {
       headers: {
         "content-type": response_format === "mp3" ? "audio/mpeg" : "audio/mpeg",
         "cache-control": "no-store",
+        "x-openai-tone": toneKey,
       },
     });
   } catch (e: any) {
