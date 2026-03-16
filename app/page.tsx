@@ -562,45 +562,12 @@ export default function Page() {
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             placeholder="Type a question or tap Record…"
-            className="w-full rounded-xl border border-slate-300 bg-white p-3 text-sm shadow-sm
+            className="w-full rounded-xl border border-slate-300 bg-white p-3 text-base shadow-sm
                       focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-300 placeholder:text-slate-600 text-slate-600"
             rows={4}
           />
 
-          <div className="flex items-center justify-between mb-3">
 
-
-            <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1">
-              <button
-                type="button"
-                onClick={() => deviceSttSupported && setSttMode("device")}
-                disabled={!deviceSttSupported}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition
-      ${sttMode === "device"
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                  }
-      ${!deviceSupported ? "opacity-40 cursor-not-allowed" : ""}
-    `}
-              >
-                On-Device
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSttMode("cloud")}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition
-      ${sttMode === "cloud"
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-600 hover:text-slate-900"
-                  }
-    `}
-              >
-                Cloud
-              </button>
-            </div>
-
-          </div>
 
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
             {(sttMode === "device" ? listening : status === "recording") ? (
@@ -626,8 +593,45 @@ export default function Page() {
               }}
               disabled={!question.trim()}
             >
+              <img src="/icons/button-icon.png" alt="ask alex" />
+              
               Ask ALEX
             </button>
+
+            <div className="flex items-center justify-between mb-3">
+
+
+              <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => deviceSttSupported && setSttMode("device")}
+                  disabled={!deviceSttSupported}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition
+      ${sttMode === "device"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                    }
+      ${!deviceSupported ? "opacity-40 cursor-not-allowed" : ""}
+    `}
+                >
+                  On-Device
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSttMode("cloud")}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition
+      ${sttMode === "cloud"
+                      ? "bg-white text-slate-900 shadow-sm"
+                      : "text-slate-600 hover:text-slate-900"
+                    }
+    `}
+                >
+                  Cloud
+                </button>
+              </div>
+
+            </div>
 
           </div>
 
@@ -664,39 +668,7 @@ export default function Page() {
 
         <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-3">
 
-          <div className="flex flex-wrap items-center gap-2 mb-2">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-medium text-slate-600">Text-to-Speech</span>
 
-              <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1">
-                <button
-                  type="button"
-                  onClick={() => setTtsMode("device")}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition
-        ${ttsMode === "device"
-                      ? "bg-white text-slate-900 shadow-sm"
-                      : "text-slate-600 hover:text-slate-900"
-                    }`}
-                >
-                  On-Device
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setTtsMode("openai")}
-                  className={`px-3 py-1 text-xs font-medium rounded-md transition
-        ${ttsMode === "openai"
-                      ? "bg-white text-slate-900 shadow-sm"
-                      : "text-slate-600 hover:text-slate-900"
-                    }`}
-                >
-                  OpenAI
-                </button>
-              </div>
-            </div>
-
-
-          </div>
 
           <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
             <button
@@ -709,7 +681,7 @@ export default function Page() {
                   bargeIn();
                 }
               }}
-            
+
             >
               {talkingMode ? "🔊 Talking Mode: On" : "🔈 Talking Mode: Off"}
             </button>
@@ -722,6 +694,58 @@ export default function Page() {
             >
               🛑 Stop Audio
             </button>
+
+
+
+
+
+
+
+
+
+            <div className="flex flex-wrap items-center gap-2 mb-2">
+              <div className="flex items-center justify-between mb-2">
+
+                <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => setTtsMode("device")}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition
+        ${ttsMode === "device"
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
+                      }`}
+                  >
+                    On-Device
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setTtsMode("openai")}
+                    className={`px-3 py-1 text-xs font-medium rounded-md transition
+        ${ttsMode === "openai"
+                        ? "bg-white text-slate-900 shadow-sm"
+                        : "text-slate-600 hover:text-slate-900"
+                      }`}
+                  >
+                    OpenAI
+                  </button>
+                </div>
+              </div>
+
+
+            </div>
+
+
+
+
+
+
+
+
+
+
+
           </div>
 
           <audio ref={audioRef} controls className="w-full" />
@@ -732,7 +756,7 @@ export default function Page() {
 
               <label className="text-sm text-slate-600">Device voice</label>
               <select
-                className="w-full rounded-xl border border-slate-300 bg-white p-2 text-sm"
+                className="w-full rounded-xl border border-slate-300 bg-white p-2 text-sm text-slate-600"
                 value={deviceVoiceURI}
                 onChange={(e) => setDeviceVoiceURI(e.target.value)}
                 disabled={!deviceVoices.length}
@@ -766,7 +790,7 @@ export default function Page() {
             <div className="space-y-1">
               <label className="text-sm text-slate-600">OpenAI voice</label>
               <select
-                className="w-full rounded-xl border border-slate-300 bg-white p-2 text-sm"
+                className="w-full rounded-xl border border-slate-300 bg-white p-2 text-sm text-slate-600"
                 value={openAiVoice}
                 onChange={(e) => setOpenAiVoice(e.target.value)}
               >
@@ -786,7 +810,7 @@ export default function Page() {
                   </label>
 
                   <select
-                    className="w-full rounded-xl border border-slate-300 bg-white p-2 text-sm
+                    className="w-full rounded-xl border border-slate-300 bg-white p-2 text-sm text-slate-600
                  focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-300"
                     value={openAiTone}
                     onChange={(e) =>

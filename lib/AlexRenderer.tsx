@@ -74,6 +74,10 @@ export function AlexRenderer({
     return out;
   }, [cards, result]);
 
+  const responseTitle =
+    normalizedCards.find((c) => c.kind === "summary")?.title ??
+    "ALEX Guidance";
+
   useEffect(() => {
     if (!normalizedCards.length) {
       setCurrentCardIndex(0);
@@ -125,9 +129,7 @@ export function AlexRenderer({
       <div className="alex-card">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg sm:text-xl font-semibold text-slate-900">
-            {currentCard.kind === "summary"
-              ? currentCard.title
-              : "ALEX Guidance"}
+            {responseTitle}
           </h2>
 
           <div className="text-xs text-slate-500">
