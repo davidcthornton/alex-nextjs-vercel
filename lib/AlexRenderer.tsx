@@ -128,11 +128,11 @@ export function AlexRenderer({
         </h2>
 
         {result.summary && (
-          <p className="text-sm text-slate-700">{result.summary}</p>
+          <p className="text-base text-slate-700">{result.summary}</p>
         )}
 
         {!result.summary && (
-          <p className="text-sm text-slate-700">
+          <p className="text-base text-slate-700">
             {result.status === "not_in_kb"
               ? "This question isn’t explicitly covered in the knowledge base."
               : result.status === "unclear_in_kb"
@@ -158,7 +158,7 @@ export function AlexRenderer({
             {responseTitle}
           </h2>
 
-          <div className="text-xs text-slate-500">
+          <div className="text-base text-slate-500">
             {currentCardIndex + 1} of {normalizedCards.length}
           </div>
         </div>
@@ -168,7 +168,7 @@ export function AlexRenderer({
             <h3 className="text-base font-semibold text-slate-900 mb-2">
               Overview
             </h3>
-            <div className="text-sm text-slate-800 leading-relaxed">
+            <div className="text-base text-slate-800 leading-relaxed">
               {currentCard.body}
             </div>
           </div>
@@ -177,13 +177,13 @@ export function AlexRenderer({
             <h3 className="text-base font-semibold text-slate-900 mb-2">
               Step {currentCard.step_number}
             </h3>
-            <div className="text-sm text-slate-800 leading-relaxed">
+            <div className="text-base text-slate-800 leading-relaxed">
               {currentCard.instruction}
             </div>
 
             {currentCard.notes && (
-              <div className="mt-3 text-xs text-slate-600">
-                <span className="font-semibold">Notes:</span> {currentCard.notes}
+              <div className="mt-3 text-base text-slate-600">
+                 {currentCard.notes}
               </div>
             )}
           </div>
