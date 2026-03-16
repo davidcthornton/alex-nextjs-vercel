@@ -84,6 +84,14 @@ export default function Page() {
   const [talkingMode, setTalkingMode] = useState(false);
   const [activeCardSpeech, setActiveCardSpeech] = useState<string>("");
 
+
+
+  type AlexCard =
+    | { kind: "summary"; id: string; title: string; body: string }
+    | { kind: "step"; id: string; step_number: number; instruction: string; notes: string | null };
+
+  const [cards, setCards] = useState<AlexCard[]>([]);
+
   useEffect(() => {
     if (sttMode !== "device") return;
 
@@ -261,7 +269,7 @@ export default function Page() {
   async function askAlex(userText: string) {
     setStatus("asking");
     setResult(null);
-    setStreamedText("");
+    setCards([]);
 
     const nextMessages: ChatMsg[] = [
       ...messages,
@@ -275,15 +283,8 @@ export default function Page() {
       body: JSON.stringify({ messages: nextMessages }),
     });
 
-    if (!res.ok) {
-      const errText = await res.text().catch(() => "");
-      console.error("askAlex error:", errText);
-      setStatus("ready");
-      return;
-    }
-
-    if (!res.body) {
-      console.error("Streaming not supported: response.body is null");
+    if (!res.ok || !res.body) {
+      console.error("Streaming not supported");
       setStatus("ready");
       return;
     }
@@ -291,37 +292,57 @@ export default function Page() {
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
 
-    let fullText = "";
+    let buffer = "";
 
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-        const chunk = decoder.decode(value, { stream: true });
-        fullText += chunk;
-        setStreamedText(fullText);
+      buffer += decoder.decode(value, { stream: true });
+
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop() || "";
+
+      for (const part of parts) {
+        const lines = part.split("\n");
+
+        let event = "";
+        let data = "";
+
+        for (const line of lines) {
+          if (line.startsWith("event:")) {
+            event = line.replace("event:", "").trim();
+          }
+          if (line.startsWith("data:")) {
+            data += line.replace("data:", "").trim();
+          }
+        }
+
+        if (!data) continue;
+
+        const parsed = JSON.parse(data);
+
+        if (event === "card") {
+          setCards((prev) => [...prev, parsed]);
+        }
+
+        if (event === "done") {
+          setResult(parsed.result);
+          setStatus("answered");
+
+          const alexText = JSON.stringify(parsed.result);
+
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: alexText },
+          ]);
+        }
+
+        if (event === "error") {
+          console.error("Stream error", parsed);
+          setStatus("ready");
+        }
       }
-
-      // flush decoder
-      fullText += decoder.decode();
-      setStreamedText(fullText);
-
-      const json = JSON.parse(fullText);
-      setResult(json);
-
-      const alexText =
-        json?.final_text ??
-        json?.answer ??
-        json?.content ??
-        JSON.stringify(json);
-
-      setMessages((prev) => [...prev, { role: "assistant", content: alexText }]);
-      setStatus("answered");
-      return json;
-    } catch (err) {
-      console.error("Streaming parse/read error:", err, fullText);
-      setStatus("ready");
     }
   }
 
@@ -618,19 +639,18 @@ export default function Page() {
         <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-4">
           <div className="text-sm font-medium text-slate-900 mb-2">Response</div>
 
-          {result ? (
+          {cards.length > 0 ? (
             <AlexRenderer
-              result={result}
-              onActiveStepSpeechChange={setActiveCardSpeech}
+              cards={cards}
+              onActiveCardSpeechChange={setActiveCardSpeech}
             />
           ) : status === "asking" ? (
-            streamedText ? (
-              <pre className="whitespace-pre-wrap break-words text-sm text-slate-700">
-                {streamedText}
-              </pre>
-            ) : (
-              <div className="text-slate-600">ALEX is responding...</div>
-            )
+            <div className="text-slate-600">ALEX is responding...</div>
+          ) : result ? (
+            <AlexRenderer
+              result={result}
+              onActiveCardSpeechChange={setActiveCardSpeech}
+            />
           ) : (
             <div className="text-slate-600">(none yet)</div>
           )}
@@ -689,7 +709,7 @@ export default function Page() {
                   bargeIn();
                 }
               }}
-              disabled={!result}
+            
             >
               {talkingMode ? "🔊 Talking Mode: On" : "🔈 Talking Mode: Off"}
             </button>
@@ -709,7 +729,7 @@ export default function Page() {
           {ttsMode === "device" && (
             <div className="space-y-1">
 
-              
+
               <label className="text-sm text-slate-600">Device voice</label>
               <select
                 className="w-full rounded-xl border border-slate-300 bg-white p-2 text-sm"

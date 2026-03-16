@@ -13,107 +13,129 @@ type AlexResult = {
 
 type AlexCard =
   | {
-      kind: "summary";
-      heading: string;
-      body: string;
-    }
+    kind: "summary";
+    id: string;
+    title: string;
+    body: string;
+  }
   | {
-      kind: "step";
-      heading: string;
-      stepNumber: number;
-      instruction: string;
-      notes: string | null;
-    };
+    kind: "step";
+    id: string;
+    step_number: number;
+    instruction: string;
+    notes: string | null;
+  };
+
+type AlexRendererProps =
+  | {
+    result: AlexResult;
+    cards?: never;
+    onActiveCardSpeechChange?: (text: string) => void;
+  }
+  | {
+    cards: AlexCard[];
+    result?: never;
+    onActiveCardSpeechChange?: (text: string) => void;
+  };
 
 export function AlexRenderer({
   result,
-  onActiveStepSpeechChange,
-}: {
-  result: AlexResult;
-  onActiveStepSpeechChange?: (text: string) => void;
-}) {
-  const { status, title, summary, steps, kb_limitations } = result;
+  cards,
+  onActiveCardSpeechChange,
+}: AlexRendererProps) {
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
 
-  const cards = useMemo<AlexCard[]>(() => {
+  const normalizedCards = useMemo<AlexCard[]>(() => {
+    if (cards) return cards;
+
+    if (!result) return [];
+
     const out: AlexCard[] = [];
 
-    if (summary) {
+    if (result.summary) {
       out.push({
         kind: "summary",
-        heading: title ?? "ALEX Guidance",
-        body: summary,
+        id: "summary",
+        title: result.title ?? "ALEX Guidance",
+        body: result.summary,
       });
     }
 
-    if (steps?.length) {
-      for (const s of steps) {
-        out.push({
-          kind: "step",
-          heading: `Step ${s.step_number}`,
-          stepNumber: s.step_number,
-          instruction: s.instruction,
-          notes: s.notes,
-        });
-      }
+    for (const s of result.steps ?? []) {
+      out.push({
+        kind: "step",
+        id: `step-${s.step_number}`,
+        step_number: s.step_number,
+        instruction: s.instruction,
+        notes: s.notes,
+      });
     }
 
     return out;
-  }, [title, summary, steps]);
+  }, [cards, result]);
 
   useEffect(() => {
-    setCurrentCardIndex(0);
-  }, [result]);
-
-  const currentCard = cards[currentCardIndex] ?? null;
-
-  useEffect(() => {
-    if (!onActiveStepSpeechChange || !currentCard) return;
-
-    if (currentCard.kind === "summary") {
-      onActiveStepSpeechChange(
-        [currentCard.heading, currentCard.body].filter(Boolean).join(". ")
-      );
+    if (!normalizedCards.length) {
+      setCurrentCardIndex(0);
       return;
     }
 
-    onActiveStepSpeechChange(
+    setCurrentCardIndex((prev) =>
+      Math.min(prev, normalizedCards.length - 1)
+    );
+  }, [normalizedCards.length]);
+
+  const currentCard = normalizedCards[currentCardIndex] ?? null;
+
+  useEffect(() => {
+    if (!onActiveCardSpeechChange || !currentCard) return;
+
+    if (currentCard.kind === "summary") {
+      onActiveCardSpeechChange([currentCard.title, currentCard.body].filter(Boolean).join(". "));
+      return;
+    }
+
+    onActiveCardSpeechChange(
       [
-        currentCard.heading,
+        `Step ${currentCard.step_number}`,
         currentCard.instruction,
-        currentCard.notes ? `${currentCard.notes}` : "",
+        currentCard.notes ? `Notes. ${currentCard.notes}` : "",
       ]
         .filter(Boolean)
         .join(". ")
     );
-  }, [currentCard, onActiveStepSpeechChange]);
+  }, [currentCard, onActiveCardSpeechChange]);
 
   const goPrev = () => {
     setCurrentCardIndex((prev) => Math.max(prev - 1, 0));
   };
 
   const goNext = () => {
-    setCurrentCardIndex((prev) => Math.min(prev + 1, cards.length - 1));
+    setCurrentCardIndex((prev) =>
+      Math.min(prev + 1, normalizedCards.length - 1)
+    );
   };
 
-  const hasCards = cards.length > 0;
+  if (normalizedCards.length === 0) {
+    return <div className="text-slate-600">(no response cards yet)</div>;
+  }
 
   return (
     <div className="space-y-4">
       <div className="alex-card">
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-lg sm:text-xl font-semibold text-slate-900">
-            {title ?? "ALEX Guidance"}
+            {currentCard.kind === "summary"
+              ? currentCard.title
+              : "ALEX Guidance"}
           </h2>
 
-          {hasCards && (
-            <div className="text-xs text-slate-500">
-              {currentCardIndex + 1} of {cards.length}
-            </div>
-          )}
+          <div className="text-xs text-slate-500">
+            {currentCardIndex + 1} of {normalizedCards.length}
+          </div>
         </div>
 
-        {hasCards && currentCard?.kind === "summary" && (
+        {currentCard.kind === "summary" ? (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 min-h-[140px]">
             <h3 className="text-base font-semibold text-slate-900 mb-2">
               Overview
@@ -122,12 +144,10 @@ export function AlexRenderer({
               {currentCard.body}
             </div>
           </div>
-        )}
-
-        {hasCards && currentCard?.kind === "step" && (
+        ) : (
           <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 min-h-[140px]">
             <h3 className="text-base font-semibold text-slate-900 mb-2">
-              Step {currentCard.stepNumber}
+              Step {currentCard.step_number}
             </h3>
             <div className="text-sm text-slate-800 leading-relaxed">
               {currentCard.instruction}
@@ -135,49 +155,32 @@ export function AlexRenderer({
 
             {currentCard.notes && (
               <div className="mt-3 text-xs text-slate-600">
-                 {currentCard.notes}
+                <span className="font-semibold">Notes:</span> {currentCard.notes}
               </div>
             )}
           </div>
         )}
 
-        {hasCards && (
-          <div className="mt-4 flex items-center justify-between gap-2">
-            <button
-              type="button"
-              onClick={goPrev}
-              disabled={currentCardIndex === 0}
-              className="alex-btn alex-btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              ← Previous
-            </button>
+        <div className="mt-4 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={goPrev}
+            disabled={currentCardIndex === 0}
+            className="alex-btn alex-btn-secondary disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            ← Previous
+          </button>
 
-            <button
-              type="button"
-              onClick={goNext}
-              disabled={currentCardIndex === cards.length - 1}
-              className="alex-btn alex-btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Next →
-            </button>
-          </div>
-        )}
+          <button
+            type="button"
+            onClick={goNext}
+            disabled={currentCardIndex === normalizedCards.length - 1}
+            className="alex-btn alex-btn-primary disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Next →
+          </button>
+        </div>
       </div>
-
-      {!hasCards && status !== "ok" && (
-        <div className="alex-card text-sm text-slate-700">
-          {status === "not_in_kb"
-            ? "This question isn’t explicitly covered in the provided knowledge base."
-            : "The knowledge base is unclear or incomplete for this question."}
-        </div>
-      )}
-
-      {kb_limitations && (
-        <div className="alex-card border border-amber-200 bg-amber-50">
-          <h3 className="text-base font-semibold text-slate-900 mb-2">KB Notes</h3>
-          <p className="text-sm text-slate-800">{kb_limitations}</p>
-        </div>
-      )}
     </div>
   );
 }
