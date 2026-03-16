@@ -120,8 +120,34 @@ export function AlexRenderer({
     );
   };
 
-  if (normalizedCards.length === 0) {
-    return <div className="text-slate-600">(no response cards yet)</div>;
+  if (normalizedCards.length === 0 && result) {
+    return (
+      <div className="alex-card">
+        <h2 className="text-lg sm:text-xl font-semibold text-slate-900 mb-2">
+          {result.title ?? "ALEX Guidance"}
+        </h2>
+
+        {result.summary && (
+          <p className="text-sm text-slate-700">{result.summary}</p>
+        )}
+
+        {!result.summary && (
+          <p className="text-sm text-slate-700">
+            {result.status === "not_in_kb"
+              ? "This question isn’t explicitly covered in the knowledge base."
+              : result.status === "unclear_in_kb"
+                ? "The knowledge base is unclear or incomplete for this question."
+                : "ALEX returned no procedure cards for this response."}
+          </p>
+        )}
+
+        {result.kb_limitations && (
+          <div className="mt-3 text-xs text-slate-600">
+            {result.kb_limitations}
+          </div>
+        )}
+      </div>
+    );
   }
 
   return (
