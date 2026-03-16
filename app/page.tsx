@@ -79,6 +79,8 @@ export default function Page() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ttsAbortRef = useRef<AbortController | null>(null);
 
+  const [streamedText, setStreamedText] = useState<string>("");
+
   useEffect(() => {
     if (sttMode !== "device") return;
 
@@ -144,7 +146,7 @@ export default function Page() {
 
   async function startRecording() {
     setStatus("requesting_mic");
-    
+
     if (sttMode === "device") {
       if (!deviceSttSupported) {
         console.warn("Device STT not supported; falling back to cloud STT");
@@ -152,7 +154,7 @@ export default function Page() {
         // fall through into cloud path below
       } else {
         //resetTranscript();
-        finalTranscriptRef.current = ""; 
+        finalTranscriptRef.current = "";
 
         SpeechRecognition.startListening({
           continuous: false,
@@ -161,7 +163,7 @@ export default function Page() {
 
         setStatus("recording");
         startSilenceMonitor();
-        return; 
+        return;
       }
     }
 
@@ -247,6 +249,8 @@ export default function Page() {
 
   async function askAlex(userText: string) {
     setStatus("asking");
+    setResult(null);
+    setStreamedText("");
 
     const nextMessages: ChatMsg[] = [
       ...messages,
@@ -257,24 +261,57 @@ export default function Page() {
     const res = await fetch("/api/ask", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ messages: nextMessages })
+      body: JSON.stringify({ messages: nextMessages }),
     });
 
-    const json = await res.json();
-    setResult(json);
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      console.error("askAlex error:", errText);
+      setStatus("ready");
+      return;
+    }
 
-    // Store *what ALEX said* back into history.
-    // Pick the right field depending on your API response shape.
-    const alexText =
-      json?.final_text ??
-      json?.answer ??
-      json?.content ??
-      JSON.stringify(json);
+    if (!res.body) {
+      console.error("Streaming not supported: response.body is null");
+      setStatus("ready");
+      return;
+    }
 
-    setMessages((prev) => [...prev, { role: "assistant", content: alexText }]);
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
 
-    setStatus("answered");
-    return json;
+    let fullText = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        fullText += chunk;
+        setStreamedText(fullText);
+      }
+
+      // flush decoder
+      fullText += decoder.decode();
+      setStreamedText(fullText);
+
+      const json = JSON.parse(fullText);
+      setResult(json);
+
+      const alexText =
+        json?.final_text ??
+        json?.answer ??
+        json?.content ??
+        JSON.stringify(json);
+
+      setMessages((prev) => [...prev, { role: "assistant", content: alexText }]);
+      setStatus("answered");
+      return json;
+    } catch (err) {
+      console.error("Streaming parse/read error:", err, fullText);
+      setStatus("ready");
+    }
   }
 
 
@@ -370,7 +407,7 @@ export default function Page() {
       body: JSON.stringify({
         text: script,
         voice: openAiVoice,
-        tone: openAiTone, 
+        tone: openAiTone,
       }),
       signal: ac.signal,
     });
@@ -557,7 +594,7 @@ export default function Page() {
             </button>
 
           </div>
-          
+
           {sttMode === "device" && (
             <div className="text-xs text-slate-500 mt-2">
               STT debug: {sttDebug || "(none)"}
@@ -746,10 +783,17 @@ export default function Page() {
 
         <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-4">
           <div className="text-sm font-medium text-slate-900 mb-2">Response</div>
-          {status === "asking" ? (
-            <div className="text-slate-600">Asking ALEX, just a moment...</div>
-          ) : result ? (
+
+          {result ? (
             <AlexRenderer result={result} />
+          ) : status === "asking" ? (
+            streamedText ? (
+              <pre className="whitespace-pre-wrap break-words text-sm text-slate-700">
+                {streamedText}
+              </pre>
+            ) : (
+              <div className="text-slate-600">ALEX is responding...</div>
+            )
           ) : (
             <div className="text-slate-600">(none yet)</div>
           )}
