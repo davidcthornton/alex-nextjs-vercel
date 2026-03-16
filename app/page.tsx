@@ -81,6 +81,9 @@ export default function Page() {
 
   const [streamedText, setStreamedText] = useState<string>("");
 
+  const [talkingMode, setTalkingMode] = useState(false);
+  const [activeCardSpeech, setActiveCardSpeech] = useState<string>("");
+
   useEffect(() => {
     if (sttMode !== "device") return;
 
@@ -88,6 +91,14 @@ export default function Page() {
       setStatus("ready");
     }
   }, [listening, sttMode, status]);
+
+  useEffect(() => {
+    if (!talkingMode) return;
+    if (!activeCardSpeech.trim()) return;
+
+    speakText(activeCardSpeech);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [talkingMode, activeCardSpeech]);
 
   useEffect(() => {
     if (sttMode !== "device") return;
@@ -360,26 +371,22 @@ export default function Page() {
     await audio.play();
   }
 
-  async function speakResult(r: any) {
-    // barge-in: stop existing audio + abort in-flight tts request    
-    console.log(r);
-    bargeIn();
+  async function speakText(text: string) {
+    if (!text.trim()) return;
 
-    const script = buildSpeakableScript(r);
+    bargeIn();
     setStatus("tts");
 
-    // ---- DEVICE TTS PATH ----
+    // DEVICE TTS
     if (ttsMode === "device") {
-      if (typeof window === "undefined" || !("speechSynthesis" in window)) {
-        // fallback to OpenAI if device TTS not available
-      } else {
-        const utter = new SpeechSynthesisUtterance(script);
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        const utter = new SpeechSynthesisUtterance(text);
         utterRef.current = utter;
 
         const selected = getSelectedDeviceVoice();
         if (selected) {
           utter.voice = selected;
-          utter.lang = selected.lang; // 👈 important
+          utter.lang = selected.lang;
         }
 
         utter.onstart = () => setStatus("playing");
@@ -397,7 +404,7 @@ export default function Page() {
       }
     }
 
-    // ---- OPENAI TTS PATH ----
+    // OPENAI TTS
     const ac = new AbortController();
     ttsAbortRef.current = ac;
 
@@ -405,12 +412,19 @@ export default function Page() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        text: script,
+        text,
         voice: openAiVoice,
         tone: openAiTone,
       }),
       signal: ac.signal,
     });
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => "");
+      console.error("TTS error:", err);
+      setStatus("answered");
+      return;
+    }
 
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -418,14 +432,21 @@ export default function Page() {
     const audio = audioRef.current!;
     audio.src = url;
 
-    // update status based on actual playback
     audio.onplaying = () => setStatus("playing");
-    audio.onended = () => setStatus("answered");
+    audio.onended = () => {
+      setStatus("answered");
+      URL.revokeObjectURL(url);
+    };
     audio.onpause = () => {
-      if (status === "playing") setStatus("answered");
+      setStatus("answered");
     };
 
     await audio.play();
+  }
+
+  async function speakResult(r: any) {
+    const script = buildSpeakableScript(r);
+    await speakText(script);
   }
 
 
@@ -513,11 +534,7 @@ export default function Page() {
 
         </header>
 
-        <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-3">
-          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
-            <div className="text-sm text-slate-600">Status: {status}</div>
-          </div>
-        </section>
+
 
         <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-4 space-y-2">
           <textarea
@@ -530,9 +547,7 @@ export default function Page() {
           />
 
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-medium text-slate-600">
-              Speech-to-Text
-            </span>
+
 
             <div className="inline-flex rounded-lg border border-slate-300 bg-slate-100 p-1">
               <button
@@ -595,12 +610,37 @@ export default function Page() {
 
           </div>
 
-          {sttMode === "device" && (
-            <div className="text-xs text-slate-500 mt-2">
-              STT debug: {sttDebug || "(none)"}
-            </div>
+
+        </section>
+
+
+
+        <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-4">
+          <div className="text-sm font-medium text-slate-900 mb-2">Response</div>
+
+          {result ? (
+            <AlexRenderer
+              result={result}
+              onActiveStepSpeechChange={setActiveCardSpeech}
+            />
+          ) : status === "asking" ? (
+            streamedText ? (
+              <pre className="whitespace-pre-wrap break-words text-sm text-slate-700">
+                {streamedText}
+              </pre>
+            ) : (
+              <div className="text-slate-600">ALEX is responding...</div>
+            )
+          ) : (
+            <div className="text-slate-600">(none yet)</div>
           )}
         </section>
+
+
+
+
+
+
 
         <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-3">
 
@@ -635,6 +675,25 @@ export default function Page() {
               </div>
             </div>
 
+
+          </div>
+
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+            <button
+              className="alex-btn alex-btn-primary w-full sm:w-auto"
+              onClick={() => {
+                const next = !talkingMode;
+                setTalkingMode(next);
+
+                if (!next) {
+                  bargeIn();
+                }
+              }}
+              disabled={!result}
+            >
+              {talkingMode ? "🔊 Talking Mode: On" : "🔈 Talking Mode: Off"}
+            </button>
+
             <button
               type="button"
               onClick={bargeIn}
@@ -645,41 +704,12 @@ export default function Page() {
             </button>
           </div>
 
-          <button
-            className="alex-btn alex-btn-primary w-full sm:w-auto"
-            onClick={() => {
-              if (result) speakResult(result);
-            }}
-            disabled={!result}
-          >
-            🔊 Read Response Aloud
-          </button>
-
-
-          <button
-            type="button"
-            className="alex-btn alex-btn-secondary w-full sm:w-auto"
-            onClick={() => {
-              const v = getSelectedDeviceVoice();
-              const u = new SpeechSynthesisUtterance(
-                "Voice test. The quick brown fox jumps over the lazy dog. One two three."
-              );
-              if (v) {
-                u.voice = v;
-                u.lang = v.lang;
-              }
-              window.speechSynthesis.cancel();
-              window.speechSynthesis.speak(u);
-            }}
-            disabled={ttsMode !== "device"}
-          >
-            Test Voice
-          </button>
-
           <audio ref={audioRef} controls className="w-full" />
 
           {ttsMode === "device" && (
             <div className="space-y-1">
+
+              
               <label className="text-sm text-slate-600">Device voice</label>
               <select
                 className="w-full rounded-xl border border-slate-300 bg-white p-2 text-sm"
@@ -763,15 +793,7 @@ export default function Page() {
                     <option value="training">Training / Instructor</option>
                   </select>
 
-                  {ttsMode === "openai" && (
-                    <button
-                      type="button"
-                      className="alex-btn alex-btn-secondary w-full sm:w-auto"
-                      onClick={previewOpenAiVoice}
-                    >
-                      🔊 Preview Voice & Tone
-                    </button>
-                  )}
+
                 </div>
               )}
 
@@ -781,23 +803,18 @@ export default function Page() {
           )}
         </section>
 
-        <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-4">
-          <div className="text-sm font-medium text-slate-900 mb-2">Response</div>
 
-          {result ? (
-            <AlexRenderer result={result} />
-          ) : status === "asking" ? (
-            streamedText ? (
-              <pre className="whitespace-pre-wrap break-words text-sm text-slate-700">
-                {streamedText}
-              </pre>
-            ) : (
-              <div className="text-slate-600">ALEX is responding...</div>
-            )
-          ) : (
-            <div className="text-slate-600">(none yet)</div>
-          )}
+        <section className="bg-white rounded-2xl shadow-sm ring-1 ring-slate-200 p-3">
+          <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2">
+            <div className="text-sm text-slate-600">Status: {status}</div>
+          </div>
         </section>
+
+
+
+
+
+
 
       </div>
     </div>
