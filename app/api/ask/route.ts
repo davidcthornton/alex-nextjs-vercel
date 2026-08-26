@@ -232,9 +232,36 @@ export async function POST(req: Request) {
   }
 
   // Retrieve the three most relevant chunks from Chroma Cloud.
+  // const retrievedChunks = await retrieveKnowledge(
+  //   latestUserMessage.content,
+  //   3
+  // );
+  const userMessages = windowed.filter(
+    (m) => m.role === "user"
+  );
+
+  const currentUserMessage =
+    userMessages[userMessages.length - 1];
+
+  const previousUserMessage =
+    userMessages.length >= 2
+      ? userMessages[userMessages.length - 2]
+      : null;
+
+  let retrievalQuery = currentUserMessage.content;
+
+  if (previousUserMessage) {
+    retrievalQuery = [
+      `Previous user question: ${previousUserMessage.content}`,
+      `Current user question: ${currentUserMessage.content}`,
+    ].join("\n");
+  }
+
+  console.log("Retrieval query:", retrievalQuery);
+
   const retrievedChunks = await retrieveKnowledge(
-    latestUserMessage.content,
-    3
+    retrievalQuery,
+    5
   );
 
   const knowledgeContext =
