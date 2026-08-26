@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "chromadb": "^3.5.0",
     "next": "16.1.6",
     "openai": "^6.22.0",
     "react": "19.2.3",

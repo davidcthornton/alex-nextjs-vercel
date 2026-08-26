@@ -1,7 +1,10 @@
 import OpenAI from "openai";
-import { readFile } from "node:fs/promises";
 import { systemPrompt, developerPrompt } from "@/lib/alexPrompts";
 import { alexJsonSchema } from "@/lib/alexSchema";
+import {
+  retrieveKnowledge,
+  formatKnowledgeContext,
+} from "@/lib/rag";
 
 export const runtime = "nodejs";
 
@@ -43,7 +46,7 @@ function sseEvent(event: string, data: unknown) {
 /**
  * Attempts to extract the complete value of a top-level JSON string field,
  * such as "summary" or "title", from a partially streamed JSON string.
- *
+ * 
  * This only returns a value once the closing quote has arrived.
  */
 function extractCompleteTopLevelStringField(
@@ -214,7 +217,39 @@ export async function POST(req: Request) {
 
   const WINDOW = 16;
   const windowed = cleaned.slice(-WINDOW);
-  const kbHtml = await readFile(process.cwd() + "/knowledge.html", "utf8");
+
+  // Find the most recent user question.
+  // Conversation history is preserved separately in `windowed`.
+  const latestUserMessage = [...windowed]
+    .reverse()
+    .find((m) => m.role === "user");
+
+  if (!latestUserMessage) {
+    return Response.json(
+      { error: "No user question found" },
+      { status: 400 }
+    );
+  }
+
+  // Retrieve the three most relevant chunks from Chroma Cloud.
+  const retrievedChunks = await retrieveKnowledge(
+    latestUserMessage.content,
+    3
+  );
+
+  const knowledgeContext =
+    formatKnowledgeContext(retrievedChunks);
+
+  // Useful while we're developing.
+  // This appears in the Next.js terminal, not the browser.
+  console.log(
+    "ALEX retrieved:",
+    retrievedChunks.map((chunk) => ({
+      source: chunk.source,
+      chunk: chunk.chunkNumber,
+      distance: chunk.distance,
+    }))
+  );
 
   const encoder = new TextEncoder();
 
@@ -240,9 +275,10 @@ export async function POST(req: Request) {
             {
               role: "developer",
               content:
-                `Reference knowledge base (HTML). Use it to answer the user.\n` +
-                `If a clarifying question was just asked, interpret the next short user reply as the answer.\n\n` +
-                `KNOWLEDGE BASE (HTML):\n${kbHtml}`,
+                `Use ONLY the following retrieved knowledge base context to answer the user.\n` +
+                `If a clarifying question was just asked, interpret the next short user reply as the answer.\n` +
+                `The Source and Location labels identify where each retrieved passage came from.\n\n` +
+                `KNOWLEDGE BASE CONTEXT:\n${knowledgeContext}`,
             },
             ...windowed.map((m) => ({ role: m.role, content: m.content })),
           ],
